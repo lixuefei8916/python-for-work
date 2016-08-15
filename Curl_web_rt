@@ -1,8 +1,5 @@
 # 报警:办公区访问web缓慢！！
 
-
-# 报警:办公区访问web缓慢！！
-
 #-*- coding:utf-8 -*-
 import os
 import re
