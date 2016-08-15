@@ -1,3 +1,198 @@
 # 报警:办公区访问web缓慢！！
 
 
+# 报警:办公区访问web缓慢！！
+
+#-*- coding:utf-8 -*-
+import os
+import re
+import time
+import smtplib
+from email.MIMEText import MIMEText
+from email.Header import Header
+
+import sys
+
+mail_username = 'lxf'
+mail_password = '********'
+mail_receiver = ['lxf@lxf.com','lxf@lxf.com']
+
+class Curl_rt(object):
+	def __init__(self):
+		self.__curl_rt = ''
+		self.__time_namelookup = ''
+		self.__time_commect = ''
+		self.__time_starttransfer = ''
+		self.__time_total = ''
+		self.__speed_download = ''
+		self.__total = ''
+
+
+	def linux_command(self):
+		linux_command = 'curl -o /dev/null -s -w %{time_namelookup}::%{time_connect}::%{time_starttransfer}::%{time_total}::%{speed_download}"\n" "http://www.baidu.com"'
+		self.__curl_rt = os.popen(linux_command).read().split("::",4)
+
+	def time_total(self):
+		self.__total = float(self.__curl_rt[0])+float(self.__curl_rt[1])+float(self.__curl_rt[2])+float(self.__curl_rt[3])
+		return self.__total
+
+	def timeline(self):
+		self.__time_namelookup =  float(self.__curl_rt[0])
+		self.__time_commect = float(self.__curl_rt[1])
+		self.__time_starttransfer = float(self.__curl_rt[2])
+		self.__time_total = float(self.__curl_rt[3])
+		self.__speed_download = float(self.__curl_rt[4])
+
+		return self.__time_namelookup,self.__time_commect,self.__time_starttransfer,self.__time_total,self.__speed_download
+
+class Mail(object):
+	def __init__(self):
+		self.__mail_receiver = ''
+		self.__mail_username = ''
+		self.__mail_password = ''
+
+		self.__mail_msg = ''
+
+	def config(self,mail_username,mail_password,*mail_receiver):
+		self.__mail_receiver = mail_receiver
+		self.__mail_username = mail_username
+		self.__mail_password = mail_password
+
+
+	def msg(self,ip_addr,dns,gateway,*timeline):
+		self.__mail_msg =  u'\n报警：办公区访问web较慢\n\n环境\nDNS ：%s\n测试主机: %s\n出口: %s \n\n测试页面 http://www.baidu.com\n\nDNS 解析域名时间 = %s\nclient和server端建立TCP 连接的时间 = %s \n从client发出请求；到web的server 响应第一个字节的时间 = %s \nclient发出请求；到web的server发送会所有的相应数据的时间= %s \n网页访问的下载速度 = %sMb/s'%(dns,ip_addr,gateway,timeline[0],timeline[1],timeline[2],timeline[3],(float(timeline[4])/1024/1024))
+		return self.__mail_msg
+
+	def send(self,mail_title,ip_addr,dns,gateway,*timeline):
+		mail_msg = self.msg(ip_addr,dns,gateway,*timeline)
+
+		reload(sys)
+		sys.setdefaultencoding('utf-8')
+
+		sender = 'lxf@lxf.com'
+		receiver = self.__mail_receiver
+		smtpserver = 'mail.lxf.com'
+		username = self.__mail_username
+		password = self.__mail_password
+
+		title = mail_title
+		msg = MIMEText(mail_msg,'plain','utf-8')
+		msg['From'] = Header('lxf@lxf.com')
+		msg['To'] = Header('lxf@lxf.com')
+		msg['Subject'] = Header(title,'utf-8')
+
+		smtp = smtplib.SMTP()
+		smtp.connect('mail.lxf.com')
+		smtp.login(username,password)
+		smtp.sendmail(sender,receiver,msg.as_string())
+		smtp.quit()
+
+
+class Network(object):
+	def __init__(self):
+		self.__ip_addr = ''
+		self.__dns = ''
+		self.__gateway = ''
+
+	def get_ip_address(self):
+		linux_command = "ifconfig | grep 'inet addr' | grep -v '127.0.0.1' | awk -F ':' '{print $2}'|awk '{print $1}'"
+		self.__ip_addr = os.popen(linux_command).readlines()
+		return self.__ip_addr
+
+
+	def get_dns(self):
+		linux_command = "cat /etc/resolv.conf | grep -v '#' | awk -F ' ' '{print $2}'"
+		self.__dns = os.popen(linux_command).readlines()
+		return self.__dns
+
+	def get_gateway(self):
+		linux_command = "cat /etc/sysconfig/network | grep 'GATEWAY' | awk -F '=' '{print $2}'"
+		self.__gateway = os.popen(linux_command).readlines()
+		return self.__gateway
+
+	def set_gateway(self,gateway_new,gateway_old):
+		GW_new = 'GATEWAY=%s'%gateway_new
+		GW_old = 'GATEWAY=%s'%gateway_old
+		network_file = '/etc/sysconfig/network'
+
+		data = open(network_file).read()
+		data = re.sub(GW_old,GW_new,data)
+		open(network_file,'wb').write(data)
+
+		linux_command='/etc/init.d/network restart'
+		os.popen(linux_command).readlines()#必须加readlines,否则执行时满屏echo
+
+if __name__ == '__main__':
+	lxf = Curl_rt()
+	lxf.linux_command()	
+	xizhimen_total = lxf.time_total()
+
+	if float(xizhimen_total) > 3:
+		# 获取 访问web各个过程的时间表
+		timeline = lxf.timeline()
+
+		# 获取 本机IP、DNS、Gateway
+		network = Network()
+		ip_addr = network.get_ip_address()	#手动执行脚本可获取值,但计划任务无法获取
+		dns = network.get_dns()
+		gateway = network.get_gateway()
+
+		# 初始化Maill ，定义mail主题，定义mail正文中的变量，最后send发送
+		mail = Mail()
+		mail_title = u'报警:办公区访问web缓慢！ 正在检测 B飞塔 出口情况，请留意下一封邮件！'
+		mail.config(mail_username,mail_password,*mail_receiver)
+		mail.send(mail_title,ip_addr,dns,gateway,*timeline)
+
+
+		# 网关切换到 B，以测试 B网络
+		network.set_gateway(gateway_new='192.168.B.1',gateway_old='192.168.A.1')
+		time.sleep(30)
+
+		# 初始化 BCurl时间表
+		pindao = Curl_rt()
+		pindao.linux_command()	
+
+		# 获取 访问web总时长
+		pindao_total = pindao.time_total()
+
+		# 如果时长大于3，则B也慢，疑似区域问题； 如果B<3，则B正常，问题出在A；
+		if float(pindao_total) > 3:
+			# 获取 B访问web各个过程的时间表
+			timeline = pindao.timeline()
+
+			# 获取 本机IP、DNS、Gateway
+			network = Network()
+			ip_addr = network.get_ip_address()
+			dns = network.get_dns()
+			gateway = network.get_gateway()
+
+			# 初始化Maill ，定义mail主题，定义mail正文中的变量，最后send发送
+			mail = Mail()
+			mail_title = u'报警:B访问web同样缓慢！ 疑似区域性问题！'
+			mail.config(mail_username,mail_password,*mail_receiver)
+			mail.send(mail_title,ip_addr,dns,gateway,*timeline)	
+
+			# 网关切回 A段
+			network.set_gateway(gateway_new='192.168.A.1',gateway_old='192.168.B.1')
+			time.sleep(10)
+
+		else:
+			timeline = pindao.timeline()
+
+			network = Network()
+			ip_addr = network.get_ip_address()
+			dns = network.get_dns()
+			gateway = network.get_gateway()
+
+			mail = Mail()
+			mail_title = u'报警:B访问web正常！ 故障为A区域！'
+			mail.config(mail_username,mail_password,*mail_receiver)
+			mail.send(mail_title,ip_addr,dns,gateway,*timeline)	
+
+			network.set_gateway(gateway_new='192.168.A.1',gateway_old='192.168.B.1')
+			time.sleep(10)
+	else:
+		pass
+
+# Linux下 crontab -e 添加计划任务
+# */5 * * * * /usr/bin/python /data/lxf/curl_web.py > /dev/null 2>&1
