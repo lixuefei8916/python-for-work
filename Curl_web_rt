@@ -1,6 +1,5 @@
-# 报警:办公区访问web缓慢！！
-
 #-*- coding:utf-8 -*-
+# 报警:A办公区访问web缓慢！！ v4 20160812
 import os
 import re
 import time
@@ -11,7 +10,7 @@ from email.Header import Header
 import sys
 
 mail_username = 'lxf'
-mail_password = '********'
+mail_password = '***********'
 mail_receiver = ['lxf@lxf.com','lxf@lxf.com']
 
 class Curl_rt(object):
@@ -57,7 +56,7 @@ class Mail(object):
 
 
 	def msg(self,ip_addr,dns,gateway,*timeline):
-		self.__mail_msg =  u'\n报警：办公区访问web较慢\n\n环境\nDNS ：%s\n测试主机: %s\n出口: %s \n\n测试页面 http://www.baidu.com\n\nDNS 解析域名时间 = %s\nclient和server端建立TCP 连接的时间 = %s \n从client发出请求；到web的server 响应第一个字节的时间 = %s \nclient发出请求；到web的server发送会所有的相应数据的时间= %s \n网页访问的下载速度 = %sMb/s'%(dns,ip_addr,gateway,timeline[0],timeline[1],timeline[2],timeline[3],(float(timeline[4])/1024/1024))
+		self.__mail_msg =  u'\n报警：访问web较慢\n\n环境\nDNS ：%s\n测试主机: %s\n出口: %s \n\n测试页面 http://www.baidu.com\n\nDNS 解析域名时间 = %s\nclient和server端建立TCP 连接的时间 = %s \n从client发出请求；到web的server 响应第一个字节的时间 = %s \nclient发出请求；到web的server发送会所有的相应数据的时间= %s \n网页访问的下载速度 = %sMb/s'%(dns,ip_addr,gateway,timeline[0],timeline[1],timeline[2],timeline[3],(float(timeline[4])/1024/1024))
 		return self.__mail_msg
 
 	def send(self,mail_title,ip_addr,dns,gateway,*timeline):
@@ -74,8 +73,8 @@ class Mail(object):
 
 		title = mail_title
 		msg = MIMEText(mail_msg,'plain','utf-8')
-		msg['From'] = Header('lxf@lxf.com')
-		msg['To'] = Header('lxf@lxf.com')
+		msg['From'] = Header('lxf@lxf5.com')
+		msg['To'] = Header('lxf@lxf5.com')
 		msg['Subject'] = Header(title,'utf-8')
 
 		smtp = smtplib.SMTP()
@@ -119,12 +118,9 @@ class Network(object):
 		linux_command='/etc/init.d/network restart'
 		os.popen(linux_command).readlines()#必须加readlines,否则执行时满屏echo
 
-if __name__ == '__main__':
-	lxf = Curl_rt()
-	lxf.linux_command()	
-	xizhimen_total = lxf.time_total()
 
-	if float(xizhimen_total) > 3:
+
+def XZM_controller(mail_title,gateway_new,gateway_old):
 		# 获取 访问web各个过程的时间表
 		timeline = lxf.timeline()
 
@@ -136,14 +132,45 @@ if __name__ == '__main__':
 
 		# 初始化Maill ，定义mail主题，定义mail正文中的变量，最后send发送
 		mail = Mail()
-		mail_title = u'报警:办公区访问web缓慢！ 正在检测 B飞塔 出口情况，请留意下一封邮件！'
+		mail_title = mail_title
 		mail.config(mail_username,mail_password,*mail_receiver)
 		mail.send(mail_title,ip_addr,dns,gateway,*timeline)
 
+		# 网关切换到 B，以测试 B网络
+		network.set_gateway(gateway_new=gateway_new,gateway_old=gateway_old)
+		time.sleep(30)
+
+
+def PD_controller(mail_title,gateway_new,gateway_old):
+		# 获取 访问web各个过程的时间表
+		timeline = pindao.timeline()
+
+		# 获取 本机IP、DNS、Gateway
+		network = Network()
+		ip_addr = network.get_ip_address()	#手动执行脚本可获取值,但计划任务无法获取
+		dns = network.get_dns()
+		gateway = network.get_gateway()
+
+		# 初始化Maill ，定义mail主题，定义mail正文中的变量，最后send发送
+		mail = Mail()
+		mail_title = mail_title
+		mail.config(mail_username,mail_password,*mail_receiver)
+		mail.send(mail_title,ip_addr,dns,gateway,*timeline)
 
 		# 网关切换到 B，以测试 B网络
-		network.set_gateway(gateway_new='192.168.B.1',gateway_old='192.168.A.1')
+		network.set_gateway(gateway_new=gateway_new,gateway_old=gateway_old)
 		time.sleep(30)
+
+if __name__ == '__main__':
+	lxf = Curl_rt()
+	lxf.linux_command()	
+	xizhimen_total = lxf.time_total()
+
+	if float(xizhimen_total) < 0:
+		pass
+	else:
+		mail_title = u'报警:A办公区访问web缓慢！ 正在检测 B飞塔 出口情况，请留意下一封邮件！'
+		XZM_controller(mail_title,gateway_new='192.168.B.1',gateway_old='192.168.A.1')
 
 		# 初始化 BCurl时间表
 		pindao = Curl_rt()
@@ -154,42 +181,13 @@ if __name__ == '__main__':
 
 		# 如果时长大于3，则B也慢，疑似区域问题； 如果B<3，则B正常，问题出在A；
 		if float(pindao_total) > 3:
-			# 获取 B访问web各个过程的时间表
-			timeline = pindao.timeline()
-
-			# 获取 本机IP、DNS、Gateway
-			network = Network()
-			ip_addr = network.get_ip_address()
-			dns = network.get_dns()
-			gateway = network.get_gateway()
-
-			# 初始化Maill ，定义mail主题，定义mail正文中的变量，最后send发送
-			mail = Mail()
 			mail_title = u'报警:B访问web同样缓慢！ 疑似区域性问题！'
-			mail.config(mail_username,mail_password,*mail_receiver)
-			mail.send(mail_title,ip_addr,dns,gateway,*timeline)	
-
-			# 网关切回 A段
-			network.set_gateway(gateway_new='192.168.A.1',gateway_old='192.168.B.1')
-			time.sleep(10)
+			PD_controller(mail_title,gateway_new='192.168.A.1',gateway_old='192.168.B.1')
 
 		else:
-			timeline = pindao.timeline()
-
-			network = Network()
-			ip_addr = network.get_ip_address()
-			dns = network.get_dns()
-			gateway = network.get_gateway()
-
-			mail = Mail()
 			mail_title = u'报警:B访问web正常！ 故障为A区域！'
-			mail.config(mail_username,mail_password,*mail_receiver)
-			mail.send(mail_title,ip_addr,dns,gateway,*timeline)	
+			PD_controller(mail_title,gateway_new='192.168.A.1',gateway_old='192.168.B.1')
 
-			network.set_gateway(gateway_new='192.168.A.1',gateway_old='192.168.B.1')
-			time.sleep(10)
-	else:
-		pass
 
 # Linux下 crontab -e 添加计划任务
 # */5 * * * * /usr/bin/python /data/lxf/curl_web.py > /dev/null 2>&1
