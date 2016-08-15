@@ -188,6 +188,6 @@ if __name__ == '__main__':
 			mail_title = u'报警:B访问web正常！ 故障为A区域！'
 			PD_controller(mail_title,gateway_new='192.168.A.1',gateway_old='192.168.B.1')
 
-
+# 1
 # Linux下 crontab -e 添加计划任务
 # */5 * * * * /usr/bin/python /data/lxf/curl_web.py > /dev/null 2>&1
